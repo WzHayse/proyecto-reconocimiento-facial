@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   LayoutDashboard,
-  ScanFace,
   ClipboardList,
   Users,
   BarChart3,
@@ -24,11 +23,6 @@ const navigation = [
     name: "Dashboard",
     href: "/",
     icon: LayoutDashboard,
-  },
-  {
-    name: "Reconocimiento Facial",
-    href: "/reconocimiento",
-    icon: ScanFace,
   },
   {
     name: "Registro de Accesos",

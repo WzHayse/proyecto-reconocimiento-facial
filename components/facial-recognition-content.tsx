@@ -124,7 +124,7 @@ export function FacialRecognitionContent() {
             <div className="relative aspect-video overflow-hidden rounded-lg bg-foreground/5">
               {/* Camera background pattern */}
               <div className="absolute inset-0 bg-gradient-to-br from-muted/50 to-muted" />
-              
+
               {/* Grid overlay */}
               <div className="absolute inset-0 opacity-20">
                 <div
@@ -140,11 +140,10 @@ export function FacialRecognitionContent() {
               {/* Face detection frame */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
-                  className={`relative h-48 w-40 rounded-xl border-2 transition-colors duration-300 ${
-                    isRecognizing
-                      ? "border-primary animate-pulse"
-                      : "border-muted-foreground/30"
-                  }`}
+                  className={`relative h-48 w-40 rounded-xl border-2 transition-colors duration-300 ${isRecognizing
+                    ? "border-primary animate-pulse"
+                    : "border-muted-foreground/30"
+                    }`}
                 >
                   {/* Corner markers */}
                   <div className="absolute -left-1 -top-1 h-4 w-4 border-l-2 border-t-2 border-primary" />
@@ -155,11 +154,10 @@ export function FacialRecognitionContent() {
                   {/* Face icon placeholder */}
                   <div className="flex h-full items-center justify-center">
                     <ScanFace
-                      className={`h-20 w-20 ${
-                        isRecognizing
-                          ? "text-primary animate-pulse"
-                          : "text-muted-foreground/30"
-                      }`}
+                      className={`h-20 w-20 ${isRecognizing
+                        ? "text-primary animate-pulse"
+                        : "text-muted-foreground/30"
+                        }`}
                     />
                   </div>
                 </div>
@@ -213,7 +211,7 @@ export function FacialRecognitionContent() {
                   <Camera className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">Cámara</span>
                 </div>
-                <Badge className="bg-success hover:bg-success/80">Activa</Badge>
+                <Badge className="bg-success hover:bg-success/80">Inactiva</Badge>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
                 <div className="flex items-center gap-2">
@@ -285,13 +283,12 @@ export function FacialRecognitionContent() {
               </div>
               <Progress
                 value={verificationSteps[verificationStep].progress}
-                className={`h-2 ${
-                  isSuccess
-                    ? "[&>div]:bg-success"
-                    : isDenied
+                className={`h-2 ${isSuccess
+                  ? "[&>div]:bg-success"
+                  : isDenied
                     ? "[&>div]:bg-destructive"
                     : ""
-                }`}
+                  }`}
               />
             </div>
 

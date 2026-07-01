@@ -246,10 +246,10 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
           {scanResult && (
             <Card
               className={`border-2 shadow-lg ${scanResult.status === "authorized"
-                  ? "border-green-200 bg-green-50"
-                  : scanResult.status === "denied"
-                    ? "border-red-200 bg-red-50"
-                    : "border-yellow-200 bg-yellow-50"
+                ? "border-green-200 bg-green-50"
+                : scanResult.status === "denied"
+                  ? "border-red-200 bg-red-50"
+                  : "border-yellow-200 bg-yellow-50"
                 }`}
             >
               <CardHeader>
