@@ -21,7 +21,7 @@ DATABASE_PATH = "rostros"
 
 NOMBRES_PERSONAS = {
     "Nik_Llaguento": "Nik Llaguento Gamarra",
-    "Usuario_Dos": "Alexander Lopez Haro",
+    "Usuario_Dos": "Nicols Lopez Haro",
     "Usuario_Tres": "Josue Maucaylla Gonzales",
 }
 

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -20,66 +21,121 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Search, Filter, ScanFace, Calendar } from "lucide-react"
-import { mockAccessRecords, type AccessRecord } from "@/lib/mock-data"
 
-const statusColors: Record<AccessRecord["status"], string> = {
+type AccessRecord = {
+  id_asistencia: string
+  fecha: string
+  hora: string
+  estado_acceso: string
+  metodo_validacion: string
+  observacion: string | null
+  personal: {
+    nombres: string
+    apellidos: string
+    area: string
+    rol: string
+  } | null
+}
+
+const statusColors: Record<string, string> = {
   Autorizado: "bg-success hover:bg-success/80",
   Denegado: "bg-destructive hover:bg-destructive/80",
   "Fuera de horario": "bg-warning text-warning-foreground hover:bg-warning/80",
 }
 
 export function AccessRegistryContent() {
+  const [records, setRecords] = useState<AccessRecord[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateFilter, setDateFilter] = useState<string>("")
 
+  const today = new Date().toISOString().split("T")[0]
+
+  const loadAccessRecords = async () => {
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from("asistencias")
+      .select(`
+        id_asistencia,
+        fecha,
+        hora,
+        estado_acceso,
+        metodo_validacion,
+        observacion,
+        personal (
+          nombres,
+          apellidos,
+          area,
+          rol
+        )
+      `)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error cargando asistencias:", error)
+      setRecords([])
+      setLoading(false)
+      return
+    }
+
+    setRecords((data as unknown as AccessRecord[]) || [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    loadAccessRecords()
+  }, [])
+
   const filteredRecords = useMemo(() => {
-    return mockAccessRecords.filter((record) => {
+    return records.filter((record) => {
+      const fullName = `${record.personal?.nombres || ""} ${record.personal?.apellidos || ""}`.toLowerCase()
+      const area = record.personal?.area?.toLowerCase() || ""
+      const search = searchTerm.toLowerCase()
+
       const matchesSearch =
-        record.personnelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        record.dni.includes(searchTerm) ||
-        record.area.toLowerCase().includes(searchTerm.toLowerCase())
+        fullName.includes(search) ||
+        area.includes(search) ||
+        record.metodo_validacion.toLowerCase().includes(search)
 
       const matchesStatus =
-        statusFilter === "all" || record.status === statusFilter
+        statusFilter === "all" || record.estado_acceso === statusFilter
 
-      const matchesDate = !dateFilter || record.date === dateFilter
-
+      const matchesDate = !dateFilter || record.fecha === dateFilter
       return matchesSearch && matchesStatus && matchesDate
     })
-  }, [searchTerm, statusFilter, dateFilter])
+  }, [records, searchTerm, statusFilter, dateFilter])
 
   const stats = useMemo(() => {
-    const today = "2026-05-20"
-    const todayRecords = mockAccessRecords.filter((r) => r.date === today)
+    const todayRecords = records.filter((record) => record.fecha === today)
+
     return {
       total: todayRecords.length,
-      authorized: todayRecords.filter((r) => r.status === "Autorizado").length,
-      denied: todayRecords.filter((r) => r.status === "Denegado").length,
-      outOfSchedule: todayRecords.filter((r) => r.status === "Fuera de horario").length,
+      authorized: todayRecords.filter((record) => record.estado_acceso === "Autorizado").length,
+      denied: todayRecords.filter((record) => record.estado_acceso === "Denegado").length,
+      outOfSchedule: todayRecords.filter((record) => record.estado_acceso === "Fuera de horario").length,
     }
-  }, [])
+  }, [records, today])
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Registro de Accesos
         </h1>
         <p className="text-muted-foreground">
-          Historial de ingresos y salidas del personal del área de soporte
+          Historial de ingresos del personal del área de soporte
         </p>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Hoy</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
+                <p className="text-2xl font-bold">{loading ? "..." : stats.total}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                 <ScanFace className="h-5 w-5 text-primary" />
@@ -87,34 +143,37 @@ export function AccessRegistryContent() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Autorizados</p>
-                <p className="text-2xl font-bold text-success">{stats.authorized}</p>
+                <p className="text-2xl font-bold text-success">{loading ? "..." : stats.authorized}</p>
               </div>
               <Badge className="bg-success hover:bg-success/80">{stats.authorized}</Badge>
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Denegados</p>
-                <p className="text-2xl font-bold text-destructive">{stats.denied}</p>
+                <p className="text-2xl font-bold text-destructive">{loading ? "..." : stats.denied}</p>
               </div>
               <Badge variant="destructive">{stats.denied}</Badge>
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Fuera de Horario</p>
-                <p className="text-2xl font-bold text-warning">{stats.outOfSchedule}</p>
+                <p className="text-2xl font-bold text-warning">{loading ? "..." : stats.outOfSchedule}</p>
               </div>
               <Badge className="bg-warning text-warning-foreground hover:bg-warning/80">
                 {stats.outOfSchedule}
@@ -123,8 +182,6 @@ export function AccessRegistryContent() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Filters */}
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
@@ -135,12 +192,13 @@ export function AccessRegistryContent() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nombre, DNI o área..."
+                placeholder="Buscar por nombre, área o método..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
               />
             </div>
+
             <div className="flex gap-2">
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -151,13 +209,14 @@ export function AccessRegistryContent() {
                   className="w-[180px] pl-9"
                 />
               </div>
+
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px]">
                   <Filter className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="Autorizado">Autorizado</SelectItem>
                   <SelectItem value="Denegado">Denegado</SelectItem>
                   <SelectItem value="Fuera de horario">Fuera de horario</SelectItem>
@@ -168,61 +227,58 @@ export function AccessRegistryContent() {
         </CardContent>
       </Card>
 
-      {/* Table */}
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-base">Historial de Accesos</CardTitle>
-          <CardDescription>
-            {filteredRecords.length} registros encontrados
-          </CardDescription>
+          <CardDescription>{filteredRecords.length} registros encontrados</CardDescription>
         </CardHeader>
+
         <CardContent>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Personal</TableHead>
-                  <TableHead>DNI</TableHead>
                   <TableHead>Área</TableHead>
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Ingreso</TableHead>
-                  <TableHead>Salida</TableHead>
+                  <TableHead>Hora</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead>Método</TableHead>
+                  <TableHead>Observación</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {filteredRecords.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground">
                       No se encontraron registros
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredRecords.map((record) => (
-                    <TableRow key={record.id}>
+                    <TableRow key={record.id_asistencia}>
                       <TableCell className="font-medium">
-                        {record.personnelName}
+                        {record.personal
+                          ? `${record.personal.nombres} ${record.personal.apellidos}`
+                          : "Personal no encontrado"}
                       </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {record.dni}
-                      </TableCell>
-                      <TableCell>{record.area}</TableCell>
-                      <TableCell>{record.date}</TableCell>
-                      <TableCell className="font-mono">{record.entryTime}</TableCell>
-                      <TableCell className="font-mono">
-                        {record.exitTime || "-"}
-                      </TableCell>
+                      <TableCell>{record.personal?.area || "Sin área"}</TableCell>
+                      <TableCell>{record.fecha}</TableCell>
+                      <TableCell className="font-mono">{record.hora}</TableCell>
                       <TableCell>
-                        <Badge className={statusColors[record.status]}>
-                          {record.status}
+                        <Badge className={statusColors[record.estado_acceso] || "bg-secondary"}>
+                          {record.estado_acceso}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="gap-1">
                           <ScanFace className="h-3 w-3" />
-                          Facial
+                          {record.metodo_validacion || "Facial"}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[240px] truncate">
+                        {record.observacion || "-"}
                       </TableCell>
                     </TableRow>
                   ))

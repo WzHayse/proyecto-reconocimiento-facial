@@ -1,95 +1,133 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import {
-  Users,
-  UserCheck,
-  UserX,
-  Clock,
-  Camera,
-  Brain,
-  TrendingUp,
-} from "lucide-react"
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from "recharts"
-import { mockDailyStats, mockHourlyStats, mockAccessRecords } from "@/lib/mock-data"
+import { Users, UserCheck, UserX, Clock, Camera, Brain } from "lucide-react"
 
-const stats = [
-  {
-    title: "Accesos Hoy",
-    value: "47",
-    change: "+12%",
-    icon: Users,
-    color: "text-primary",
-    bgColor: "bg-primary/10",
-  },
-  {
-    title: "Personal Autorizado",
-    value: "43",
-    description: "de 47 intentos",
-    icon: UserCheck,
-    color: "text-success",
-    bgColor: "bg-success/10",
-  },
-  {
-    title: "Accesos Denegados",
-    value: "3",
-    description: "hoy",
-    icon: UserX,
-    color: "text-destructive",
-    bgColor: "bg-destructive/10",
-  },
-  {
-    title: "Último Acceso",
-    value: "09:10",
-    description: "Roberto Salazar",
-    icon: Clock,
-    color: "text-accent",
-    bgColor: "bg-accent/10",
-  },
-]
-
-const systemStatus = [
-  {
-    name: "Cámara de Seguridad",
-    status: "Operativa",
-    icon: Camera,
-    online: true,
-  },
-  {
-    name: "Sistema de Reconocimiento",
-    status: "Activo",
-    icon: Brain,
-    online: true,
-  },
-]
+type Asistencia = {
+  id_asistencia: string
+  fecha: string
+  hora: string
+  estado_acceso: string
+  metodo_validacion: string
+  observacion: string
+  personal: {
+    nombres: string
+    apellidos: string
+    area: string
+    rol: string
+  } | null
+}
 
 export function DashboardContent() {
-  const lastAccess = mockAccessRecords[6]
+  const [personalTotal, setPersonalTotal] = useState(0)
+  const [asistenciasHoy, setAsistenciasHoy] = useState(0)
+  const [autorizadosHoy, setAutorizadosHoy] = useState(0)
+  const [denegadosHoy, setDenegadosHoy] = useState(0)
+  const [ultimasAsistencias, setUltimasAsistencias] = useState<Asistencia[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fechaHoy = new Date().toISOString().split("T")[0]
+
+  const cargarDashboard = async () => {
+    setLoading(true)
+
+    const { count: totalPersonal } = await supabase
+      .from("personal")
+      .select("*", { count: "exact", head: true })
+
+    const { count: totalAsistenciasHoy } = await supabase
+      .from("asistencias")
+      .select("*", { count: "exact", head: true })
+      .eq("fecha", fechaHoy)
+
+    const { count: totalAutorizadosHoy } = await supabase
+      .from("asistencias")
+      .select("*", { count: "exact", head: true })
+      .eq("fecha", fechaHoy)
+      .eq("estado_acceso", "Autorizado")
+
+    const { count: totalDenegadosHoy } = await supabase
+      .from("asistencias")
+      .select("*", { count: "exact", head: true })
+      .eq("fecha", fechaHoy)
+      .eq("estado_acceso", "Denegado")
+
+    const { data: asistencias } = await supabase
+      .from("asistencias")
+      .select(`
+        id_asistencia,
+        fecha,
+        hora,
+        estado_acceso,
+        metodo_validacion,
+        observacion,
+        personal (
+          nombres,
+          apellidos,
+          area,
+          rol
+        )
+      `)
+      .order("created_at", { ascending: false })
+      .limit(8)
+
+    setPersonalTotal(totalPersonal || 0)
+    setAsistenciasHoy(totalAsistenciasHoy || 0)
+    setAutorizadosHoy(totalAutorizadosHoy || 0)
+    setDenegadosHoy(totalDenegadosHoy || 0)
+    setUltimasAsistencias((asistencias as unknown as Asistencia[]) || [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    cargarDashboard()
+  }, [])
+
+  const ultimoAcceso = ultimasAsistencias[0]
+
+  const stats = [
+    {
+      title: "Asistencias Hoy",
+      value: asistenciasHoy,
+      icon: Users,
+      color: "text-primary",
+      bgColor: "bg-primary/10",
+    },
+    {
+      title: "Personal Registrado",
+      value: personalTotal,
+      icon: UserCheck,
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+    },
+    {
+      title: "Accesos Autorizados",
+      value: autorizadosHoy,
+      icon: UserCheck,
+      color: "text-green-600",
+      bgColor: "bg-green-100",
+    },
+    {
+      title: "Accesos Denegados",
+      value: denegadosHoy,
+      icon: UserX,
+      color: "text-red-600",
+      bgColor: "bg-red-100",
+    },
+  ]
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Dashboard
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
         <p className="text-muted-foreground">
           Panel de control del sistema de reconocimiento facial - DIRIS Lima Este
         </p>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
           <Card key={stat.title} className="border-border">
@@ -102,161 +140,126 @@ export function DashboardContent() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              {stat.change && (
-                <p className="flex items-center gap-1 text-xs text-success">
-                  <TrendingUp className="h-3 w-3" />
-                  {stat.change} vs. ayer
-                </p>
-              )}
-              {stat.description && (
-                <p className="text-xs text-muted-foreground">{stat.description}</p>
-              )}
+              <div className="text-2xl font-bold">{loading ? "..." : stat.value}</div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* System Status and Last Access */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {/* System Status */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base">Estado del Sistema</CardTitle>
-            <CardDescription>Monitoreo en tiempo real</CardDescription>
+            <CardDescription>Monitoreo general</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {systemStatus.map((system) => (
-              <div
-                key={system.name}
-                className="flex items-center justify-between rounded-lg bg-secondary/50 p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <system.icon className="h-5 w-5 text-muted-foreground" />
-                  <span className="text-sm font-medium">{system.name}</span>
-                </div>
-                <Badge
-                  variant={system.online ? "default" : "destructive"}
-                  className={system.online ? "bg-success hover:bg-success/80" : ""}
-                >
-                  {system.status}
-                </Badge>
+            <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+              <div className="flex items-center gap-3">
+                <Camera className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm font-medium">Cámara Web</span>
               </div>
-            ))}
+              <Badge className="bg-green-600 hover:bg-green-700">Operativa</Badge>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+              <div className="flex items-center gap-3">
+                <Brain className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm font-medium">Reconocimiento IA</span>
+              </div>
+              <Badge className="bg-green-600 hover:bg-green-700">Activo</Badge>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Last Access */}
         <Card className="border-border lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">Último Acceso Registrado</CardTitle>
-            <CardDescription>Información del más reciente ingreso</CardDescription>
+            <CardDescription>Información del ingreso más reciente</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                  <Users className="h-7 w-7 text-primary" />
+            {ultimoAcceso ? (
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                    <Users className="h-7 w-7 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-semibold">
+                      {ultimoAcceso.personal?.nombres} {ultimoAcceso.personal?.apellidos}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {ultimoAcceso.personal?.area || "Sin área"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-semibold">{lastAccess.personnelName}</p>
-                  <p className="text-sm text-muted-foreground">{lastAccess.area}</p>
+
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">
+                    <Clock className="mr-1 h-3 w-3" />
+                    {ultimoAcceso.hora}
+                  </Badge>
+                  <Badge className="bg-green-600 hover:bg-green-700">
+                    {ultimoAcceso.estado_acceso}
+                  </Badge>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="outline">DNI: {lastAccess.dni}</Badge>
-                <Badge variant="outline">Ingreso: {lastAccess.entryTime}</Badge>
-                <Badge className="bg-success hover:bg-success/80">
-                  {lastAccess.status}
-                </Badge>
-              </div>
-            </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Todavía no hay asistencias registradas.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Charts */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Daily Accesses Chart */}
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Accesos por Día</CardTitle>
-            <CardDescription>Últimos 7 días</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mockDailyStats}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="date"
-                    className="text-xs"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <YAxis
-                    className="text-xs"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Bar
-                    dataKey="accesses"
-                    fill="hsl(var(--primary))"
-                    radius={[4, 4, 0, 0]}
-                    name="Accesos"
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Hourly Accesses Chart */}
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Accesos por Hora</CardTitle>
-            <CardDescription>Distribución de hoy</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mockHourlyStats}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="hour"
-                    className="text-xs"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <YAxis
-                    className="text-xs"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="accesses"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot={{ fill: "hsl(var(--primary))", strokeWidth: 2 }}
-                    name="Accesos"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border-border">
+        <CardHeader>
+          <CardTitle className="text-base">Últimas Asistencias</CardTitle>
+          <CardDescription>Registros recientes del sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2">Fecha</th>
+                  <th className="py-2">Hora</th>
+                  <th className="py-2">Personal</th>
+                  <th className="py-2">Área</th>
+                  <th className="py-2">Método</th>
+                  <th className="py-2">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ultimasAsistencias.length > 0 ? (
+                  ultimasAsistencias.map((item) => (
+                    <tr key={item.id_asistencia} className="border-b">
+                      <td className="py-2">{item.fecha}</td>
+                      <td className="py-2">{item.hora}</td>
+                      <td className="py-2 font-medium">
+                        {item.personal?.nombres} {item.personal?.apellidos}
+                      </td>
+                      <td className="py-2">{item.personal?.area || "Sin área"}</td>
+                      <td className="py-2">{item.metodo_validacion}</td>
+                      <td className="py-2">
+                        <Badge className="bg-green-600 hover:bg-green-700">
+                          {item.estado_acceso}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                      No hay asistencias registradas.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

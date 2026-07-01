@@ -108,40 +108,56 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
         const data = await response.json()
 
         if (data.success && data.status === "authorized") {
-          const folder = data.person?.folder
+          const folder = data.person?.folder || data.person?.name?.replaceAll(" ", "_")
+
+          console.log("CARPETA:", folder)
 
           const { data: personalData, error: personalError } = await supabase
             .from("personal")
-            .select("id_personal, nombres, apellidos, area, rol")
+            .select("id_personal,nombres,apellidos,area,rol")
             .eq("carpeta_rostro", folder)
             .maybeSingle()
 
-          if (personalError) {
-            console.log("Error buscando personal:", personalError)
-          }
-
-          if (personalData) {
-            const { error: asistenciaError } = await supabase.from("asistencias").insert({
-              id_personal: personalData.id_personal,
-              estado_acceso: "Autorizado",
-              metodo_validacion: "Reconocimiento facial",
-              observacion: "Asistencia registrada desde el sistema web",
+          if (personalError || !personalData) {
+            console.error("Error buscando personal:", personalError)
+            setScanResult({
+              status: "error",
+              name: data.person?.name || "Usuario reconocido",
+              department: "Supabase",
+              role: "No disponible",
+              time: new Date().toLocaleTimeString("es-PE"),
+              message: "El rostro fue reconocido, pero no se encontró el registro del personal en Supabase.",
             })
-
-            if (asistenciaError) {
-              console.log("Error registrando asistencia:", asistenciaError)
-            }
+            return
           }
 
-          const nombreCompleto = personalData
-            ? `${personalData.nombres} ${personalData.apellidos}`
-            : data.person?.name || "Usuario reconocido"
+          const { error: asistenciaError } = await supabase.from("asistencias").insert({
+            id_personal: personalData.id_personal,
+            estado_acceso: "Autorizado",
+            metodo_validacion: "Reconocimiento facial",
+            observacion: `Asistencia registrada para ${personalData.nombres} ${personalData.apellidos}`,
+          })
+
+          if (asistenciaError) {
+            console.error("ERROR AL GUARDAR ASISTENCIA:", asistenciaError)
+            setScanResult({
+              status: "error",
+              name: `${personalData.nombres} ${personalData.apellidos}`,
+              department: personalData.area,
+              role: personalData.rol,
+              time: new Date().toLocaleTimeString("es-PE"),
+              message: "El rostro fue reconocido, pero no se pudo registrar la asistencia.",
+            })
+            return
+          }
+
+          console.log("ASISTENCIA GUARDADA")
 
           setScanResult({
             status: "authorized",
-            name: nombreCompleto,
-            department: personalData?.area || data.person?.area || "OGTI - Soporte Técnico",
-            role: personalData?.rol || data.person?.role || "Personal autorizado",
+            name: `${personalData.nombres} ${personalData.apellidos}`,
+            department: personalData.area,
+            role: personalData.rol,
             time: new Date().toLocaleTimeString("es-PE"),
             message: "Asistencia registrada correctamente. Acceso autorizado.",
           })
