@@ -1,0 +1,6 @@
+python_interpreter = "C:\\Users\\HAYSE\\OneDrive\\Desktop\\PROYECTO-RECONOCIMIENTOFACIAL\\backend-ia\\venv\\Scripts\\python.exe"
+
+search_path = [
+  "backend-ia",
+  "backend-ia\\venv\\Lib\\site-packages"
+]

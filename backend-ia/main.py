@@ -1,0 +1,104 @@
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from deepface import DeepFace
+import cv2
+import numpy as np
+import tempfile
+import os
+import pandas as pd
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://192.168.18.24:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DATABASE_PATH = "rostros"
+
+NOMBRES_PERSONAS = {
+    "Nik_Llaguento": "Nik Llaguento Gamarra",
+    "Usuario_Dos": "Alexander Lopez Haro",
+    "Usuario_Tres": "Josue Maucaylla Gonzales",
+}
+
+
+@app.get("/")
+def home():
+    return {"message": "Backend IA con DeepFace activo"}
+
+
+@app.post("/recognize")
+async def recognize(file: UploadFile = File(...)):
+    temp_path = None
+
+    try:
+        contenido = await file.read()
+
+        np_array = np.frombuffer(contenido, np.uint8)
+        imagen = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+
+        if imagen is None:
+            return {
+                "success": False,
+                "status": "denied",
+                "message": "No se pudo procesar la imagen",
+            }
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        temp_path = temp_file.name
+        temp_file.close()
+
+        cv2.imwrite(temp_path, imagen)
+
+        resultado = DeepFace.find(
+            img_path=temp_path,
+            db_path=DATABASE_PATH,
+            enforce_detection=False,
+            silent=True,
+        )
+
+        if isinstance(resultado, list) and len(resultado) > 0:
+            df_resultado = resultado[0]
+
+            if isinstance(df_resultado, pd.DataFrame) and not df_resultado.empty:
+                persona = df_resultado.iloc[0]
+                ruta = persona["identity"]
+
+                nombre_carpeta = os.path.basename(os.path.dirname(str(ruta)))
+                nombre = NOMBRES_PERSONAS.get(
+                    nombre_carpeta,
+                    nombre_carpeta.replace("_", " ")
+                )
+
+                return {
+                    "success": True,
+                    "status": "authorized",
+                    "message": "Acceso autorizado",
+                    "person": {
+                        "name": nombre,
+                        "folder": nombre_carpeta,
+                        "area": "OGTI - Soporte Técnico",
+                        "role": "Personal autorizado",
+                    },
+                }
+
+        return {
+            "success": False,
+            "status": "denied",
+            "message": "Rostro no reconocido",
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "status": "error",
+            "message": str(e),
+        }
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
