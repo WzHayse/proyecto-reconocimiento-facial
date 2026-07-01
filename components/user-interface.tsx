@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -107,11 +108,40 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
         const data = await response.json()
 
         if (data.success && data.status === "authorized") {
+          const folder = data.person?.folder
+
+          const { data: personalData, error: personalError } = await supabase
+            .from("personal")
+            .select("id_personal, nombres, apellidos, area, rol")
+            .eq("carpeta_rostro", folder)
+            .maybeSingle()
+
+          if (personalError) {
+            console.log("Error buscando personal:", personalError)
+          }
+
+          if (personalData) {
+            const { error: asistenciaError } = await supabase.from("asistencias").insert({
+              id_personal: personalData.id_personal,
+              estado_acceso: "Autorizado",
+              metodo_validacion: "Reconocimiento facial",
+              observacion: "Asistencia registrada desde el sistema web",
+            })
+
+            if (asistenciaError) {
+              console.log("Error registrando asistencia:", asistenciaError)
+            }
+          }
+
+          const nombreCompleto = personalData
+            ? `${personalData.nombres} ${personalData.apellidos}`
+            : data.person?.name || "Usuario reconocido"
+
           setScanResult({
             status: "authorized",
-            name: data.person?.name || "Usuario reconocido",
-            department: data.person?.area || "OGTI - Soporte Técnico",
-            role: data.person?.role || "Personal autorizado",
+            name: nombreCompleto,
+            department: personalData?.area || data.person?.area || "OGTI - Soporte Técnico",
+            role: personalData?.rol || data.person?.role || "Personal autorizado",
             time: new Date().toLocaleTimeString("es-PE"),
             message: "Asistencia registrada correctamente. Acceso autorizado.",
           })
