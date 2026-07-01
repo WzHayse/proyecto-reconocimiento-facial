@@ -11,16 +11,32 @@ export default function HomePage() {
   const { isAuthenticated, userType, login, logout } = useAuth()
   const [showAdminLogin, setShowAdminLogin] = useState(false)
 
+  const volverReconocimiento = async () => {
+    await logout()
+    setShowAdminLogin(false)
+  }
+
   if (isAuthenticated && userType === "admin") {
     return (
-      <AppLayout onLogout={logout}>
+      <AppLayout onLogout={volverReconocimiento}>
         <DashboardContent />
       </AppLayout>
     )
   }
 
   if (showAdminLogin) {
-    return <LoginPage onLogin={login} />
+    return (
+      <div className="relative">
+        <LoginPage onLogin={login} />
+
+        <button
+          onClick={() => setShowAdminLogin(false)}
+          className="fixed bottom-4 left-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-slate-700"
+        >
+          Volver al reconocimiento
+        </button>
+      </div>
+    )
   }
 
   return (
