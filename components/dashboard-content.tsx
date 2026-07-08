@@ -12,13 +12,30 @@ type Asistencia = {
   hora: string
   estado_acceso: string
   metodo_validacion: string
-  observacion: string
+  observacion: string | null
   personal: {
     nombres: string
     apellidos: string
     area: string
     rol: string
   } | null
+}
+
+const formatDate = (date: string) => {
+  if (!date) return "-"
+  const [year, month, day] = date.split("-")
+  return `${day}/${month}/${year}`
+}
+
+const formatTime = (time: string) => {
+  if (!time) return "-"
+  return time.split(".")[0]
+}
+
+const badgeColor = (estado: string) => {
+  if (estado === "Autorizado") return "bg-green-600 hover:bg-green-700"
+  if (estado === "Denegado") return "bg-red-600 hover:bg-red-700"
+  return "bg-yellow-500 hover:bg-yellow-600"
 }
 
 export function DashboardContent() {
@@ -29,7 +46,9 @@ export function DashboardContent() {
   const [ultimasAsistencias, setUltimasAsistencias] = useState<Asistencia[]>([])
   const [loading, setLoading] = useState(true)
 
-  const fechaHoy = new Date().toISOString().split("T")[0]
+  const fechaHoy = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Lima",
+  })
 
   const cargarDashboard = async () => {
     setLoading(true)
@@ -41,18 +60,15 @@ export function DashboardContent() {
     const { count: totalAsistenciasHoy } = await supabase
       .from("asistencias")
       .select("*", { count: "exact", head: true })
-      .eq("fecha", fechaHoy)
 
     const { count: totalAutorizadosHoy } = await supabase
       .from("asistencias")
       .select("*", { count: "exact", head: true })
-      .eq("fecha", fechaHoy)
       .eq("estado_acceso", "Autorizado")
 
     const { count: totalDenegadosHoy } = await supabase
       .from("asistencias")
       .select("*", { count: "exact", head: true })
-      .eq("fecha", fechaHoy)
       .eq("estado_acceso", "Denegado")
 
     const { data: asistencias } = await supabase
@@ -88,9 +104,13 @@ export function DashboardContent() {
 
   const ultimoAcceso = ultimasAsistencias[0]
 
+  const ultimaAlerta = ultimasAsistencias.find(
+    (item) => item.estado_acceso === "Denegado"
+  )
+
   const stats = [
     {
-      title: "Asistencias Hoy",
+      title: "Total de Asistencias",
       value: asistenciasHoy,
       icon: Users,
       color: "text-primary",
@@ -146,6 +166,44 @@ export function DashboardContent() {
         ))}
       </div>
 
+      {ultimaAlerta && (
+        <Card className="border-red-200 bg-red-50 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base text-red-700">
+              ⚠ Alerta de Seguridad
+            </CardTitle>
+            <CardDescription>
+              Se detectó un intento de acceso no autorizado.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-2 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-muted-foreground">Fecha</p>
+                <p className="font-semibold">{formatDate(ultimaAlerta.fecha)}</p>
+              </div>
+
+              <div>
+                <p className="text-muted-foreground">Hora</p>
+                <p className="font-semibold">{formatTime(ultimaAlerta.hora)}</p>
+              </div>
+
+              <div>
+                <p className="text-muted-foreground">Estado</p>
+                <Badge className="bg-red-600 hover:bg-red-700">
+                  {ultimaAlerta.estado_acceso}
+                </Badge>
+              </div>
+            </div>
+
+            <p className="mt-3 rounded-lg bg-white/70 p-3 text-sm">
+              {ultimaAlerta.observacion || "Rostro no reconocido"}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card className="border-border">
           <CardHeader>
@@ -183,22 +241,32 @@ export function DashboardContent() {
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
                     <Users className="h-7 w-7 text-primary" />
                   </div>
-                  <div>
-                    <p className="font-semibold">
-                      {ultimoAcceso.personal?.nombres} {ultimoAcceso.personal?.apellidos}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {ultimoAcceso.personal?.area || "Sin área"}
-                    </p>
-                  </div>
+
+                  {ultimoAcceso.estado_acceso === "Denegado" ? (
+                    <div>
+                      <p className="font-semibold text-red-600">⚠ Acceso denegado</p>
+                      <p className="text-sm text-muted-foreground">
+                        {ultimoAcceso.observacion || "Rostro no reconocido"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="font-semibold">
+                        {ultimoAcceso.personal?.nombres} {ultimoAcceso.personal?.apellidos}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {ultimoAcceso.personal?.area || "Sin área"}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">
                     <Clock className="mr-1 h-3 w-3" />
-                    {ultimoAcceso.hora}
+                    {formatTime(ultimoAcceso.hora)}
                   </Badge>
-                  <Badge className="bg-green-600 hover:bg-green-700">
+                  <Badge className={badgeColor(ultimoAcceso.estado_acceso)}>
                     {ultimoAcceso.estado_acceso}
                   </Badge>
                 </div>
@@ -234,15 +302,19 @@ export function DashboardContent() {
                 {ultimasAsistencias.length > 0 ? (
                   ultimasAsistencias.map((item) => (
                     <tr key={item.id_asistencia} className="border-b">
-                      <td className="py-2">{item.fecha}</td>
-                      <td className="py-2">{item.hora}</td>
+                      <td className="py-2">{formatDate(item.fecha)}</td>
+                      <td className="py-2">{formatTime(item.hora)}</td>
                       <td className="py-2 font-medium">
-                        {item.personal?.nombres} {item.personal?.apellidos}
+                        {item.personal
+                          ? `${item.personal.nombres} ${item.personal.apellidos}`
+                          : "Acceso denegado"}
                       </td>
-                      <td className="py-2">{item.personal?.area || "Sin área"}</td>
+                      <td className="py-2">
+                        {item.personal?.area || "Rostro no reconocido"}
+                      </td>
                       <td className="py-2">{item.metodo_validacion}</td>
                       <td className="py-2">
-                        <Badge className="bg-green-600 hover:bg-green-700">
+                        <Badge className={badgeColor(item.estado_acceso)}>
                           {item.estado_acceso}
                         </Badge>
                       </td>

@@ -1,10 +1,14 @@
 "use client"
 
+import * as XLSX from "xlsx"
+import { saveAs } from "file-saver"
+import { Button } from "@/components/ui/button"
 import { useEffect, useMemo, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+
 import {
   Select,
   SelectContent,
@@ -43,6 +47,17 @@ const statusColors: Record<string, string> = {
   "Fuera de horario": "bg-warning text-warning-foreground hover:bg-warning/80",
 }
 
+const formatDate = (date: string) => {
+  if (!date) return "-"
+  const [year, month, day] = date.split("-")
+  return `${day}/${month}/${year}`
+}
+
+const formatTime = (time: string) => {
+  if (!time) return "-"
+  return time.split(".")[0]
+}
+
 export function AccessRegistryContent() {
   const [records, setRecords] = useState<AccessRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,7 +65,9 @@ export function AccessRegistryContent() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [dateFilter, setDateFilter] = useState<string>("")
 
-  const today = new Date().toISOString().split("T")[0]
+  const today = new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Lima",
+  })
 
   const loadAccessRecords = async () => {
     setLoading(true)
@@ -117,6 +134,41 @@ export function AccessRegistryContent() {
       outOfSchedule: todayRecords.filter((record) => record.estado_acceso === "Fuera de horario").length,
     }
   }, [records, today])
+
+  const exportarExcel = () => {
+    const datos = filteredRecords.map((item) => ({
+      Fecha: formatDate(item.fecha),
+      Hora: formatTime(item.hora),
+      Personal: item.personal
+        ? `${item.personal.nombres} ${item.personal.apellidos}`
+        : "Personal no encontrado",
+      Área: item.personal?.area || "Sin área",
+      Estado: item.estado_acceso,
+      Método: item.metodo_validacion,
+      Observación: item.observacion || "-",
+    }))
+
+    const hoja = XLSX.utils.json_to_sheet(datos)
+    const libro = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(libro, hoja, "Asistencias")
+
+    const excelBuffer = XLSX.write(libro, {
+      bookType: "xlsx",
+      type: "array",
+    })
+
+    const archivo = new Blob([excelBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    })
+
+    saveAs(
+      archivo,
+      `Reporte_Asistencias_${new Date().toLocaleDateString("en-CA", {
+        timeZone: "America/Lima",
+      })}.xlsx`
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -228,9 +280,17 @@ export function AccessRegistryContent() {
       </Card>
 
       <Card className="border-border">
-        <CardHeader>
-          <CardTitle className="text-base">Historial de Accesos</CardTitle>
-          <CardDescription>{filteredRecords.length} registros encontrados</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Historial de Accesos</CardTitle>
+            <CardDescription>
+              {filteredRecords.length} registros encontrados
+            </CardDescription>
+          </div>
+
+          <Button onClick={exportarExcel}>
+            Exportar Excel
+          </Button>
         </CardHeader>
 
         <CardContent>
@@ -264,8 +324,8 @@ export function AccessRegistryContent() {
                           : "Personal no encontrado"}
                       </TableCell>
                       <TableCell>{record.personal?.area || "Sin área"}</TableCell>
-                      <TableCell>{record.fecha}</TableCell>
-                      <TableCell className="font-mono">{record.hora}</TableCell>
+                      <TableCell>{formatDate(record.fecha)}</TableCell>
+                      <TableCell className="font-mono">{formatTime(record.hora)}</TableCell>
                       <TableCell>
                         <Badge className={statusColors[record.estado_acceso] || "bg-secondary"}>
                           {record.estado_acceso}

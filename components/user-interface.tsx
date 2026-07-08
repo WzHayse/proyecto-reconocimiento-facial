@@ -162,6 +162,19 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
             message: "Asistencia registrada correctamente. Acceso autorizado.",
           })
         } else {
+          const { error: denegadoError } = await supabase.from("asistencias").insert({
+            id_personal: null,
+            estado_acceso: "Denegado",
+            metodo_validacion: "Reconocimiento facial",
+            observacion: data.message || "Rostro no reconocido o sin permiso de acceso",
+          })
+
+          if (denegadoError) {
+            console.error("ERROR AL GUARDAR ACCESO DENEGADO:", denegadoError)
+          } else {
+            console.log("ACCESO DENEGADO GUARDADO")
+          }
+
           setScanResult({
             status: "denied",
             name: "Rostro no reconocido",

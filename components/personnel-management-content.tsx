@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Search, User, ScanFace, Plus } from "lucide-react"
+import { Search, User, ScanFace, Plus, X } from "lucide-react"
 
 type Personal = {
   id_personal: string
@@ -31,6 +31,18 @@ export function PersonnelManagementContent() {
   const [personal, setPersonal] = useState<Personal[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [loading, setLoading] = useState(true)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [faceImage, setFaceImage] = useState<File | null>(null)
+
+  const [formData, setFormData] = useState({
+    nombres: "",
+    apellidos: "",
+    area: "OGTI - Soporte Técnico",
+    rol: "Personal autorizado",
+    estado: "Activo",
+    carpeta_rostro: "",
+  })
 
   const cargarPersonal = async () => {
     setLoading(true)
@@ -73,10 +85,91 @@ export function PersonnelManagementContent() {
     })
   }, [personal, searchTerm])
 
+  const generarCarpetaRostro = (nombres: string, apellidos: string) => {
+    const texto = `${nombres}_${apellidos}`
+    return texto.trim().replace(/\s+/g, "_").replace(/[^\w_]/g, "")
+  }
+
+  const guardarPersonal = async () => {
+    if (!formData.nombres || !formData.apellidos) {
+      alert("Ingrese nombres y apellidos")
+      return
+    }
+
+    if (!faceImage) {
+      alert("Seleccione una imagen del rostro")
+      return
+    }
+
+    setSaving(true)
+
+    const carpeta =
+      formData.carpeta_rostro ||
+      generarCarpetaRostro(formData.nombres, formData.apellidos)
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_IA_API_URL || "http://localhost:8000"
+
+      const faceFormData = new FormData()
+      faceFormData.append("folder_name", carpeta)
+      faceFormData.append("file", faceImage)
+
+      const response = await fetch(`${apiUrl}/register-person-face`, {
+        method: "POST",
+        headers: {
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: faceFormData,
+      })
+
+      const faceResult = await response.json()
+
+      if (!faceResult.success) {
+        alert("No se pudo registrar la imagen del rostro")
+        return
+      }
+
+      const { error } = await supabase.from("personal").insert({
+        nombres: formData.nombres,
+        apellidos: formData.apellidos,
+        area: formData.area,
+        rol: formData.rol,
+        estado: formData.estado,
+        carpeta_rostro: carpeta,
+      })
+
+      if (error) {
+        console.error("Error guardando personal:", error)
+        alert("No se pudo registrar el personal")
+        return
+      }
+
+      setModalOpen(false)
+
+      setFormData({
+        nombres: "",
+        apellidos: "",
+        area: "OGTI - Soporte Técnico",
+        rol: "Personal autorizado",
+        estado: "Activo",
+        carpeta_rostro: "",
+      })
+
+      setFaceImage(null)
+      cargarPersonal()
+    } catch (error) {
+      console.error("Error registrando personal:", error)
+      alert("Ocurrió un error al registrar el personal")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const totalPersonal = personal.length
   const activos = personal.filter((item) => item.estado === "Activo").length
   const inactivos = personal.filter((item) => item.estado !== "Activo").length
   const rostrosRegistrados = personal.filter((item) => item.carpeta_rostro).length
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -89,7 +182,7 @@ export function PersonnelManagementContent() {
           </p>
         </div>
 
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={() => setModalOpen(true)}>
           <Plus className="h-4 w-4" />
           Agregar Personal
         </Button>
@@ -115,11 +208,11 @@ export function PersonnelManagementContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Activos</p>
-                <p className="text-2xl font-bold text-success">{loading ? "..." : activos}</p>
+                <p className="text-2xl font-bold text-success">
+                  {loading ? "..." : activos}
+                </p>
               </div>
-              <Badge className="bg-success hover:bg-success/80">
-                {activos}
-              </Badge>
+              <Badge className="bg-success hover:bg-success/80">{activos}</Badge>
             </div>
           </CardContent>
         </Card>
@@ -154,6 +247,7 @@ export function PersonnelManagementContent() {
           </CardContent>
         </Card>
       </div>
+
       <Card className="border-border">
         <CardContent className="pt-6">
           <div className="relative">
@@ -203,7 +297,6 @@ export function PersonnelManagementContent() {
                       </TableCell>
 
                       <TableCell>{persona.area}</TableCell>
-
                       <TableCell>{persona.rol}</TableCell>
 
                       <TableCell>
@@ -214,9 +307,7 @@ export function PersonnelManagementContent() {
                               : ""
                           }
                           variant={
-                            persona.estado === "Activo"
-                              ? "default"
-                              : "destructive"
+                            persona.estado === "Activo" ? "default" : "destructive"
                           }
                         >
                           {persona.estado}
@@ -225,21 +316,14 @@ export function PersonnelManagementContent() {
 
                       <TableCell>
                         {persona.carpeta_rostro ? (
-                          <Badge className="bg-primary">
-                            Registrado
-                          </Badge>
+                          <Badge className="bg-primary">Registrado</Badge>
                         ) : (
-                          <Badge variant="outline">
-                            Pendiente
-                          </Badge>
+                          <Badge variant="outline">Pendiente</Badge>
                         )}
                       </TableCell>
 
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                        >
+                        <Button variant="outline" size="sm">
                           Ver detalles
                         </Button>
                       </TableCell>
@@ -251,6 +335,85 @@ export function PersonnelManagementContent() {
           </div>
         </CardContent>
       </Card>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Agregar Personal</h2>
+
+              <Button variant="ghost" size="icon" onClick={() => setModalOpen(false)}>
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+
+            <div className="grid gap-4">
+              <Input
+                placeholder="Nombres"
+                value={formData.nombres}
+                onChange={(e) => setFormData({ ...formData, nombres: e.target.value })}
+              />
+
+              <Input
+                placeholder="Apellidos"
+                value={formData.apellidos}
+                onChange={(e) => setFormData({ ...formData, apellidos: e.target.value })}
+              />
+
+              <Input
+                placeholder="Área"
+                value={formData.area}
+                onChange={(e) => setFormData({ ...formData, area: e.target.value })}
+              />
+
+              <Input
+                placeholder="Cargo / Rol"
+                value={formData.rol}
+                onChange={(e) => setFormData({ ...formData, rol: e.target.value })}
+              />
+
+              <Input
+                placeholder="Estado"
+                value={formData.estado}
+                onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+              />
+
+              <Input
+                placeholder="Carpeta rostro (opcional)"
+                value={formData.carpeta_rostro}
+                onChange={(e) =>
+                  setFormData({ ...formData, carpeta_rostro: e.target.value })
+                }
+              />
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Imagen del rostro</label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null
+                    setFaceImage(file)
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Seleccione una imagen clara del rostro.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setModalOpen(false)}>
+                Cancelar
+              </Button>
+
+              <Button onClick={guardarPersonal} disabled={saving}>
+                {saving ? "Guardando..." : "Registrar Personal"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

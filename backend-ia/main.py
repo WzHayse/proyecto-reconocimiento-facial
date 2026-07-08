@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from deepface import DeepFace
 import cv2
@@ -102,3 +102,36 @@ async def recognize(file: UploadFile = File(...)):
     finally:
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+@app.post("/register-person-face")
+async def register_person_face(
+    folder_name: str = Form(...),
+    file: UploadFile = File(...),
+):
+    try:
+        safe_folder = folder_name.strip().replace(" ", "_")
+        person_folder = os.path.join(DATABASE_PATH, safe_folder)
+
+        os.makedirs(person_folder, exist_ok=True)
+
+        filename = file.filename or "rostro.jpg"
+        file_path = os.path.join(person_folder, filename)
+
+        content = await file.read()
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        return {
+            "success": True,
+            "message": "Imagen registrada correctamente",
+            "folder": safe_folder,
+            "file_path": file_path,
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+        }
