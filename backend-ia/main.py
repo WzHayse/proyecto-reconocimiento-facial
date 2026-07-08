@@ -1,3 +1,5 @@
+from supabase import create_client
+from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from deepface import DeepFace
@@ -19,6 +21,15 @@ app.add_middleware(
 
 DATABASE_PATH = "rostros"
 
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+supabase = (
+    create_client(SUPABASE_URL, SUPABASE_KEY)
+    if SUPABASE_URL and SUPABASE_KEY
+    else None
+)
+
 NOMBRES_PERSONAS = {
     "Nik_Llaguento": "Nik Llaguento Gamarra",
     "Usuario_Dos": "Nicols Lopez Haro",
@@ -29,6 +40,41 @@ NOMBRES_PERSONAS = {
 @app.get("/")
 def home():
     return {"message": "Backend IA con DeepFace activo"}
+
+
+def validar_horario():
+    if supabase is None:
+        return True, "Horario no validado"
+
+    try:
+        response = supabase.table("horarios").select("*").limit(1).execute()
+
+        if not response.data:
+            return True, "Sin configuración de horario"
+
+        config = response.data[0]
+
+        ahora = datetime.now()
+        hora_actual = ahora.strftime("%H:%M")
+        dia_semana = ahora.weekday()
+
+        if config.get("modo_feriado"):
+            return False, "Acceso bloqueado por modo feriado"
+
+        if dia_semana >= 5 and not config.get("permitir_fines_semana"):
+            return False, "Acceso fuera de horario: fines de semana no permitidos"
+
+        hora_entrada = str(config.get("hora_entrada", "08:00"))[:5]
+        hora_salida = str(config.get("hora_salida", "18:00"))[:5]
+
+        if hora_actual < hora_entrada or hora_actual > hora_salida:
+            return False, f"Acceso fuera de horario permitido ({hora_entrada} - {hora_salida})"
+
+        return True, "Horario permitido"
+
+    except Exception as e:
+        print("Error validando horario:", e)
+        return True, "Horario no validado"
 
 
 @app.post("/recognize")
@@ -71,8 +117,23 @@ async def recognize(file: UploadFile = File(...)):
                 nombre_carpeta = os.path.basename(os.path.dirname(str(ruta)))
                 nombre = NOMBRES_PERSONAS.get(
                     nombre_carpeta,
-                    nombre_carpeta.replace("_", " ")
+                    nombre_carpeta.replace("_", " "),
                 )
+
+                horario_valido, mensaje_horario = validar_horario()
+
+                if not horario_valido:
+                    return {
+                        "success": True,
+                        "status": "out_of_schedule",
+                        "message": mensaje_horario,
+                        "person": {
+                            "name": nombre,
+                            "folder": nombre_carpeta,
+                            "area": "OGTI - Soporte Técnico",
+                            "role": "Personal autorizado",
+                        },
+                    }
 
                 return {
                     "success": True,

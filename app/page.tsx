@@ -15,7 +15,10 @@ export default function HomePage() {
     await logout()
     setShowAdminLogin(false)
   }
-
+  if (isAuthenticated && userType === "user") {
+    window.location.href = "/mis-asistencias"
+    return null
+  }
   if (isAuthenticated && userType === "admin") {
     return (
       <AppLayout onLogout={volverReconocimiento}>
@@ -47,7 +50,7 @@ export default function HomePage() {
         onClick={() => setShowAdminLogin(true)}
         className="fixed bottom-4 right-4 rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-slate-700"
       >
-        Administrador
+        Iniciar sesión
       </button>
     </div>
   )

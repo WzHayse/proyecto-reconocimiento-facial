@@ -107,14 +107,17 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
 
         const data = await response.json()
 
-        if (data.success && data.status === "authorized") {
+        if (
+          data.success &&
+          (data.status === "authorized" || data.status === "out_of_schedule")
+        ) {
           const folder = data.person?.folder || data.person?.name?.replaceAll(" ", "_")
 
           console.log("CARPETA:", folder)
 
           const { data: personalData, error: personalError } = await supabase
             .from("personal")
-            .select("id_personal,nombres,apellidos,area,rol")
+            .select("id_personal,nombres,apellidos,area,rol,estado")
             .eq("carpeta_rostro", folder)
             .maybeSingle()
 
@@ -131,9 +134,34 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
             return
           }
 
+          if (personalData.estado !== "Activo") {
+            const { error: asistenciaError } = await supabase.from("asistencias").insert({
+              id_personal: personalData.id_personal,
+              estado_acceso: "Denegado",
+              metodo_validacion: "Reconocimiento facial",
+              observacion: `Personal inactivo: ${personalData.nombres} ${personalData.apellidos}`,
+            })
+
+            if (asistenciaError) {
+              console.error("ERROR AL GUARDAR ACCESO DENEGADO:", asistenciaError)
+            }
+
+            setScanResult({
+              status: "denied",
+              name: `${personalData.nombres} ${personalData.apellidos}`,
+              department: personalData.area,
+              role: personalData.rol,
+              time: new Date().toLocaleTimeString("es-PE"),
+              message: "Usuario reconocido, pero se encuentra inactivo. Acceso denegado.",
+            })
+
+            return
+          }
+
           const { error: asistenciaError } = await supabase.from("asistencias").insert({
             id_personal: personalData.id_personal,
-            estado_acceso: "Autorizado",
+            estado_acceso:
+              data.status === "out_of_schedule" ? "Fuera de horario" : "Autorizado",
             metodo_validacion: "Reconocimiento facial",
             observacion: `Asistencia registrada para ${personalData.nombres} ${personalData.apellidos}`,
           })
@@ -154,12 +182,15 @@ export function UserInterface({ onLogout }: UserInterfaceProps) {
           console.log("ASISTENCIA GUARDADA")
 
           setScanResult({
-            status: "authorized",
+            status: data.status === "out_of_schedule" ? "denied" : "authorized",
             name: `${personalData.nombres} ${personalData.apellidos}`,
             department: personalData.area,
             role: personalData.rol,
             time: new Date().toLocaleTimeString("es-PE"),
-            message: "Asistencia registrada correctamente. Acceso autorizado.",
+            message:
+              data.status === "out_of_schedule"
+                ? data.message
+                : "Asistencia registrada correctamente. Acceso autorizado.",
           })
         } else {
           const { error: denegadoError } = await supabase.from("asistencias").insert({

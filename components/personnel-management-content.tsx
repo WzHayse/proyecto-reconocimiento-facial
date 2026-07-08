@@ -165,6 +165,31 @@ export function PersonnelManagementContent() {
     }
   }
 
+  const cambiarEstadoPersonal = async (persona: Personal) => {
+    const nuevoEstado =
+      persona.estado === "Activo" ? "Inactivo" : "Activo"
+
+    const confirmar = confirm(
+      `¿Desea cambiar el estado de ${persona.nombres} ${persona.apellidos} a ${nuevoEstado}?`
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from("personal")
+      .update({
+        estado: nuevoEstado,
+      })
+      .eq("id_personal", persona.id_personal)
+
+    if (error) {
+      alert("No se pudo actualizar el estado.")
+      return
+    }
+
+    cargarPersonal()
+  }
+
   const totalPersonal = personal.length
   const activos = personal.filter((item) => item.estado === "Activo").length
   const inactivos = personal.filter((item) => item.estado !== "Activo").length
@@ -323,9 +348,22 @@ export function PersonnelManagementContent() {
                       </TableCell>
 
                       <TableCell>
-                        <Button variant="outline" size="sm">
-                          Ver detalles
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                          >
+                            Editar
+                          </Button>
+
+                          <Button
+                            variant={persona.estado === "Activo" ? "destructive" : "default"}
+                            size="sm"
+                            onClick={() => cambiarEstadoPersonal(persona)}
+                          >
+                            {persona.estado === "Activo" ? "Desactivar" : "Activar"}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

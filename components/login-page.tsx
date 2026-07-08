@@ -114,6 +114,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   </>
                 )}
               </Button>
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs text-muted-foreground">o</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2"
+                onClick={() => {
+                  window.location.href = "/"
+                }}
+              >
+                <ScanFace className="h-4 w-4" />
+                Ingresar con Reconocimiento Facial
+              </Button>
             </form>
           </CardContent>
         </Card>

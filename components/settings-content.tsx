@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,71 @@ export function SettingsContent() {
     allowWeekends: false,
     holidayMode: false,
   })
+
+  const [horarioId, setHorarioId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const cargarConfiguracion = async () => {
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from("horarios")
+      .select("*")
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error("Error cargando configuración:", error)
+      setLoading(false)
+      return
+    }
+
+    if (data) {
+      setHorarioId(data.id_horario)
+      setScheduleSettings({
+        accessPointName: data.nombre_punto_acceso || "Entrada Principal",
+        defaultStart: String(data.hora_entrada || "08:00").slice(0, 5),
+        defaultEnd: String(data.hora_salida || "18:00").slice(0, 5),
+        allowWeekends: Boolean(data.permitir_fines_semana),
+        holidayMode: Boolean(data.modo_feriado),
+      })
+    }
+
+    setLoading(false)
+  }
+
+  const guardarConfiguracion = async () => {
+    setSaving(true)
+
+    const payload = {
+      nombre_punto_acceso: scheduleSettings.accessPointName,
+      hora_entrada: scheduleSettings.defaultStart,
+      hora_salida: scheduleSettings.defaultEnd,
+      permitir_fines_semana: scheduleSettings.allowWeekends,
+      modo_feriado: scheduleSettings.holidayMode,
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error } = horarioId
+      ? await supabase.from("horarios").update(payload).eq("id_horario", horarioId)
+      : await supabase.from("horarios").insert(payload)
+
+    setSaving(false)
+
+    if (error) {
+      console.error("Error guardando configuración:", error)
+      alert("No se pudo guardar la configuración")
+      return
+    }
+
+    alert("Configuración guardada correctamente")
+    cargarConfiguracion()
+  }
+
+  useEffect(() => {
+    cargarConfiguracion()
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -181,9 +247,9 @@ export function SettingsContent() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={guardarConfiguracion} disabled={saving || loading}>
           <Save className="h-4 w-4" />
-          Guardar Configuración
+          {saving ? "Guardando..." : "Guardar Configuración"}
         </Button>
       </div>
     </div>

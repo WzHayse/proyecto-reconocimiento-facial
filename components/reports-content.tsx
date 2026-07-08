@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -11,18 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   UserCheck,
   UserX,
   Clock,
   Users,
-  Calendar,
   TrendingUp,
   TrendingDown,
 } from "lucide-react"
@@ -38,76 +32,154 @@ import {
   Pie,
   Cell,
 } from "recharts"
-import { mockAccessRecords, mockPersonnel, mockDailyStats } from "@/lib/mock-data"
 
-const accessByStatus = [
-  { name: "Autorizados", value: 185, color: "hsl(var(--success))" },
-  { name: "Denegados", value: 12, color: "hsl(var(--destructive))" },
-  { name: "Fuera de horario", value: 8, color: "hsl(var(--warning))" },
-]
+type ReporteAsistencia = {
+  id_asistencia: string
+  fecha: string
+  hora: string
+  estado_acceso: string
+  metodo_validacion: string
+  observacion: string | null
+  personal: {
+    nombres: string
+    apellidos: string
+    area: string
+  } | null
+}
 
-const topAccessPersonnel = [
-  { name: "Carlos Rodríguez M.", area: "Soporte Técnico", accesses: 22 },
-  { name: "María García L.", area: "OGTI", accesses: 20 },
-  { name: "Juan Pérez S.", area: "OGTI", accesses: 19 },
-  { name: "Ana Torres R.", area: "Soporte Técnico", accesses: 18 },
-  { name: "Lucía Fernández D.", area: "Soporte Técnico", accesses: 17 },
-]
+const formatDate = (date: string) => {
+  if (!date) return "-"
+  const [year, month, day] = date.split("-")
+  return `${day}/${month}/${year}`
+}
 
-const busiestDays = [
-  { day: "Lunes", accesses: 45, trend: "up" },
-  { day: "Martes", accesses: 52, trend: "up" },
-  { day: "Miércoles", accesses: 48, trend: "down" },
-  { day: "Jueves", accesses: 51, trend: "up" },
-  { day: "Viernes", accesses: 42, trend: "down" },
-]
+const getDayName = (date: string) => {
+  const dias = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]
+  const d = new Date(`${date}T00:00:00`)
+  return dias[d.getDay()]
+}
 
 export function ReportsContent() {
-  const stats = {
-    totalWeek: 205,
-    authorized: 185,
-    denied: 12,
-    outOfSchedule: 8,
-    changePercent: 12,
+  const [records, setRecords] = useState<ReporteAsistencia[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const cargarReportes = async () => {
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from("asistencias")
+      .select(`
+        id_asistencia,
+        fecha,
+        hora,
+        estado_acceso,
+        metodo_validacion,
+        observacion,
+        personal (
+          nombres,
+          apellidos,
+          area
+        )
+      `)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error cargando reportes:", error)
+      setRecords([])
+      setLoading(false)
+      return
+    }
+
+    setRecords((data as unknown as ReporteAsistencia[]) || [])
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    cargarReportes()
+  }, [])
+
+  const total = records.length
+  const authorized = records.filter((r) => r.estado_acceso === "Autorizado").length
+  const denied = records.filter((r) => r.estado_acceso === "Denegado").length
+  const outOfSchedule = records.filter((r) => r.estado_acceso === "Fuera de horario").length
+
+  const accessByStatus = useMemo(() => {
+    return [
+      { name: "Autorizados", value: authorized, color: "hsl(var(--success))" },
+      { name: "Denegados", value: denied, color: "hsl(var(--destructive))" },
+      { name: "Fuera de horario", value: outOfSchedule, color: "hsl(var(--warning))" },
+    ].filter((item) => item.value > 0)
+  }, [authorized, denied, outOfSchedule])
+
+  const accessByDay = useMemo(() => {
+    const grouped: Record<string, number> = {}
+
+    records.forEach((record) => {
+      const day = getDayName(record.fecha)
+      grouped[day] = (grouped[day] || 0) + 1
+    })
+
+    return Object.entries(grouped).map(([day, accesses]) => ({
+      day,
+      accesses,
+    }))
+  }, [records])
+
+  const topAccessPersonnel = useMemo(() => {
+    const grouped: Record<string, { name: string; area: string; accesses: number }> = {}
+
+    records
+      .filter((r) => r.personal)
+      .forEach((record) => {
+        const name = `${record.personal?.nombres} ${record.personal?.apellidos}`
+        const area = record.personal?.area || "Sin área"
+
+        if (!grouped[name]) {
+          grouped[name] = { name, area, accesses: 0 }
+        }
+
+        grouped[name].accesses += 1
+      })
+
+    return Object.values(grouped)
+      .sort((a, b) => b.accesses - a.accesses)
+      .slice(0, 5)
+  }, [records])
+
+  const busiestDays = useMemo(() => {
+    return [...accessByDay]
+      .sort((a, b) => b.accesses - a.accesses)
+      .slice(0, 5)
+      .map((item, index) => ({
+        day: item.day,
+        accesses: item.accesses,
+        trend: index <= 1 ? "up" : "down",
+      }))
+  }, [accessByDay])
+
+  const porcentaje = (valor: number) => {
+    if (total === 0) return "0%"
+    return `${((valor / total) * 100).toFixed(1)}%`
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Reportes
-          </h1>
-          <p className="text-muted-foreground">
-            Estadísticas y análisis del sistema de control de accesos
-          </p>
-        </div>
-        <Select defaultValue="week">
-          <SelectTrigger className="w-[150px]">
-            <Calendar className="mr-2 h-4 w-4" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hoy</SelectItem>
-            <SelectItem value="week">Esta semana</SelectItem>
-            <SelectItem value="month">Este mes</SelectItem>
-            <SelectItem value="year">Este año</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          Reportes
+        </h1>
+        <p className="text-muted-foreground">
+          Estadísticas y análisis del sistema de control de accesos
+        </p>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Semanal</p>
-                <p className="text-2xl font-bold">{stats.totalWeek}</p>
-                <p className="flex items-center gap-1 text-xs text-success">
-                  <TrendingUp className="h-3 w-3" />+{stats.changePercent}% vs. semana anterior
-                </p>
+                <p className="text-sm text-muted-foreground">Total de Accesos</p>
+                <p className="text-2xl font-bold">{loading ? "..." : total}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                 <Users className="h-5 w-5 text-primary" />
@@ -115,14 +187,17 @@ export function ReportsContent() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Autorizados</p>
-                <p className="text-2xl font-bold text-success">{stats.authorized}</p>
+                <p className="text-2xl font-bold text-success">
+                  {loading ? "..." : authorized}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {((stats.authorized / stats.totalWeek) * 100).toFixed(1)}% del total
+                  {porcentaje(authorized)} del total
                 </p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
@@ -131,14 +206,17 @@ export function ReportsContent() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Denegados</p>
-                <p className="text-2xl font-bold text-destructive">{stats.denied}</p>
+                <p className="text-2xl font-bold text-destructive">
+                  {loading ? "..." : denied}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {((stats.denied / stats.totalWeek) * 100).toFixed(1)}% del total
+                  {porcentaje(denied)} del total
                 </p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10">
@@ -147,14 +225,17 @@ export function ReportsContent() {
             </div>
           </CardContent>
         </Card>
+
         <Card className="border-border">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Fuera de Horario</p>
-                <p className="text-2xl font-bold text-warning">{stats.outOfSchedule}</p>
+                <p className="text-2xl font-bold text-warning">
+                  {loading ? "..." : outOfSchedule}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  {((stats.outOfSchedule / stats.totalWeek) * 100).toFixed(1)}% del total
+                  {porcentaje(outOfSchedule)} del total
                 </p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
@@ -165,31 +246,20 @@ export function ReportsContent() {
         </Card>
       </div>
 
-      {/* Charts Row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Accesses by Day */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base">Accesos por Día</CardTitle>
-            <CardDescription>Distribución semanal de accesos</CardDescription>
+            <CardDescription>Distribución de registros por fecha</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={mockDailyStats}>
+                <BarChart data={accessByDay}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis
-                    dataKey="date"
-                    tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  />
-                  <YAxis tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
+                  <XAxis dataKey="day" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
                   <Bar
                     dataKey="accesses"
                     fill="hsl(var(--primary))"
@@ -202,7 +272,6 @@ export function ReportsContent() {
           </CardContent>
         </Card>
 
-        {/* Accesses by Status */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base">Accesos por Estado</CardTitle>
@@ -210,56 +279,40 @@ export function ReportsContent() {
           </CardHeader>
           <CardContent>
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={accessByStatus}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
-                    }
-                  >
-                    {accessByStatus.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(var(--card))",
-                      border: "1px solid hsl(var(--border))",
-                      borderRadius: "8px",
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 flex justify-center gap-4">
-              {accessByStatus.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm text-muted-foreground">{item.name}</span>
+              {accessByStatus.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-muted-foreground">
+                  No hay datos disponibles
                 </div>
-              ))}
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={accessByStatus}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label
+                    >
+                      {accessByStatus.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tables Row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Top Personnel */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base">Personal con Mayor Accesos</CardTitle>
-            <CardDescription>Top 5 de esta semana</CardDescription>
+            <CardDescription>Top 5 según registros reales</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -268,60 +321,78 @@ export function ReportsContent() {
                   <TableHead>#</TableHead>
                   <TableHead>Personal</TableHead>
                   <TableHead>Área</TableHead>
-                  <TableHead className="text-right">Accesos</TableHead>
+                  <TableHead>Accesos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {topAccessPersonnel.map((person, index) => (
-                  <TableRow key={person.name}>
-                    <TableCell className="font-medium">{index + 1}</TableCell>
-                    <TableCell>{person.name}</TableCell>
-                    <TableCell>{person.area}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">{person.accesses}</Badge>
+                {topAccessPersonnel.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-muted-foreground">
+                      No hay datos disponibles.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  topAccessPersonnel.map((person, index) => (
+                    <TableRow key={person.name}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="font-medium">{person.name}</TableCell>
+                      <TableCell>{person.area}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{person.accesses}</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
-        {/* Busiest Days */}
         <Card className="border-border">
           <CardHeader>
             <CardTitle className="text-base">Días con Mayor Flujo</CardTitle>
-            <CardDescription>Análisis de tendencias semanales</CardDescription>
+            <CardDescription>Análisis de días con más accesos</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Día</TableHead>
-                  <TableHead className="text-right">Accesos</TableHead>
-                  <TableHead className="text-right">Tendencia</TableHead>
+                  <TableHead>Accesos</TableHead>
+                  <TableHead>Tendencia</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {busiestDays.map((day) => (
-                  <TableRow key={day.day}>
-                    <TableCell className="font-medium">{day.day}</TableCell>
-                    <TableCell className="text-right">{day.accesses}</TableCell>
-                    <TableCell className="text-right">
-                      {day.trend === "up" ? (
-                        <Badge className="bg-success hover:bg-success/80">
-                          <TrendingUp className="mr-1 h-3 w-3" />
-                          Subiendo
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">
-                          <TrendingDown className="mr-1 h-3 w-3" />
-                          Bajando
-                        </Badge>
-                      )}
+                {busiestDays.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      No hay datos disponibles.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  busiestDays.map((day) => (
+                    <TableRow key={day.day}>
+                      <TableCell className="font-medium">{day.day}</TableCell>
+                      <TableCell>{day.accesses}</TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            day.trend === "up"
+                              ? "bg-success hover:bg-success/80"
+                              : "bg-warning text-warning-foreground hover:bg-warning/80"
+                          }
+                        >
+                          {day.trend === "up" ? (
+                            <TrendingUp className="mr-1 h-3 w-3" />
+                          ) : (
+                            <TrendingDown className="mr-1 h-3 w-3" />
+                          )}
+                          {day.trend === "up" ? "Mayor flujo" : "Menor flujo"}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
