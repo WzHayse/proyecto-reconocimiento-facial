@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AppLayout } from "@/components/app-layout"
 import { DashboardContent } from "@/components/dashboard-content"
 import { LoginPage } from "@/components/login-page"
@@ -10,13 +11,19 @@ import { useAuth } from "@/lib/auth-context"
 export default function HomePage() {
   const { isAuthenticated, userType, login, logout } = useAuth()
   const [showAdminLogin, setShowAdminLogin] = useState(false)
+  const router = useRouter()
 
   const volverReconocimiento = async () => {
     await logout()
     setShowAdminLogin(false)
   }
+  useEffect(() => {
+    if (isAuthenticated && userType === "user") {
+      router.push("/mis-asistencias")
+    }
+  }, [isAuthenticated, userType, router])
+
   if (isAuthenticated && userType === "user") {
-    window.location.href = "/mis-asistencias"
     return null
   }
   if (isAuthenticated && userType === "admin") {
